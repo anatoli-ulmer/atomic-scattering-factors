@@ -3,6 +3,7 @@ from collections import OrderedDict
 from xraylabtool.calculators.core import create_scattering_factor_interpolators
 import periodictable as pt
 import numpy as np
+import scipy.constants as const
 
 def get_scattering_factors(element, energies_eV):
     """
@@ -49,25 +50,33 @@ def get_effective_Z(element, energies_eV):
 def parse_formula(formula):
     """
     Parse a molecular formula and return elements and atom counts.
+    Supports floats like 0.5.
 
     Parameters
     ----------
     formula : str
-        Chemical formula, e.g. 'H2O', 'HOH', 'C6H12O6'
+        Chemical formula, e.g. 'H2O', 'NaY0.5Gd0.3F4', 'NaY0.5Gd0.3F4:Yb0.02,Er0.01'
 
     Returns
     -------
     elements : list of str
         Element symbols
-    num_atoms : list of int
+    num_atoms : list of float
         Corresponding atom counts
     """
-    # match element symbols and optional numbers
-    tokens = re.findall(r'([A-Z][a-z]?)(\d*)', formula)
-
+    # Split main host and dopants
+    if ':' in formula:
+        host, dopants = formula.split(':')
+        formula = host + ',' + dopants  # treat dopants as extra elements
+    # regex for element symbols and optional decimal numbers
+    tokens = re.findall(r'([A-Z][a-z]?)([0-9]*\.?[0-9]*)', formula)
+    
     counts = OrderedDict()
     for element, count in tokens:
-        count = int(count) if count else 1
+        if count == '':
+            count = 1.0
+        else:
+            count = float(count)   # <-- handle decimal numbers
         counts[element] = counts.get(element, 0) + count
 
     return list(counts.keys()), list(counts.values())
@@ -102,7 +111,7 @@ def get_effective_Z_formula(chemical_formula, energies):
     elements, num_atoms = parse_formula(chemical_formula)
     return sum(num_atoms[i] * get_effective_Z(elements[i], energies) for i in range(len(elements)))
 
-def get_Z_formula(chemical_formula, energies):
+def get_Z_formula(chemical_formula):
     """
     Calculate the total atomic number for a chemical formula by summing the contributions of each element.
     
@@ -110,13 +119,20 @@ def get_Z_formula(chemical_formula, energies):
     ----------
     chemical_formula : str
         Chemical formula, e.g. 'H2O', 'HOH', 'C6H12O6'
-    energies : array-like
-        X-ray energies in eV
     
     Returns
     -------
     total_Z : array-like
-        Total atomic number for each energy in `energies`
+        Total atomic number
     """
     elements, num_atoms = parse_formula(chemical_formula)
     return sum(num_atoms[i] * pt.elements.symbol(elements[i]).number for i in range(len(elements)))
+
+def effective_electron_density(sample_str, mass_density_g_per_cm3=None, photon_energy=8000):
+    if mass_density_g_per_cm3 is None:
+        mass_density_g_per_cm3 = pt.elements.symbol(sample_str).density # g/cm^3
+    mass_density = mass_density_g_per_cm3 * 1e3 # kg/m^3
+    mass = molecular_weight(sample_str) * const.u # kg
+    number_density = mass_density / mass # particles/m^3
+    Z_eff = get_effective_Z_formula(sample_str, photon_energy)
+    return number_density * Z_eff
