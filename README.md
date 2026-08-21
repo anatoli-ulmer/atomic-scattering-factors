@@ -48,10 +48,10 @@ The returned arrays have the same shape as the input energy array.
 
 The package defines an energy-dependent effective atomic number as
 
-[
+\[
 Z_\mathrm{eff}(E) =
 \sqrt{f_1(E)^2 + f_2(E)^2}.
-]
+\]
 
 For a single element:
 
@@ -133,12 +133,12 @@ The effective atomic number of a chemical formula is calculated by summing
 the energy-dependent effective atomic numbers of its constituent elements,
 weighted by their stoichiometric coefficients:
 
-[
+\[
 Z_\mathrm{eff,formula}(E)
 =========================
 
 \sum_i n_i Z_{\mathrm{eff},i}(E).
-]
+\]
 
 For example:
 
@@ -212,9 +212,9 @@ print(Z)
 
 For `SiO2`:
 
-[
+\[
 Z = 14 + 2 \times 8 = 30.
-]
+\]
 
 ---
 
@@ -222,10 +222,10 @@ Z = 14 + 2 \times 8 = 30.
 
 The package can calculate an energy-dependent effective electron density:
 
-[
+\[
 \rho_e(E) =
 n,Z_\mathrm{eff}(E),
-]
+\]
 
 where (n) is the number density of formula units.
 
