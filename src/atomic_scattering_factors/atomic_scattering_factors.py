@@ -349,6 +349,16 @@ def effective_electron_density(
 
         mass_density_g_per_cm3 = pt.elements.symbol(elements[0]).density
 
+    if not np.isfinite(mass_density_g_per_cm3):
+        raise ValueError(
+            "mass_density_g_per_cm3 must be finite."
+        )
+
+    if mass_density_g_per_cm3 <= 0:
+        raise ValueError(
+            "mass_density_g_per_cm3 must be positive."
+        )
+
     mass_density = mass_density_g_per_cm3 * 1e3  # kg/m^3
     mass = molecular_weight(sample_str) * const.u  # kg
 
