@@ -1,16 +1,20 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "atomic-scattering-factors"
-version = "0.2.0"
-description = "Calculate X-ray atomic scattering factors and effective electron densities."
+version = "0.3.0"
+description = "Calculate X-ray atomic scattering factors and real or complex effective electron densities."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "numpy",
-    "scipy",
-    "periodictable",
-    "xraylabtool",
+    "numpy>=1.26",
+    "periodictable>=2.1.0",
 ]
+
 [project.optional-dependencies]
-test = [
-    "pytest",
-]
+test = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
