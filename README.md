@@ -1,450 +1,167 @@
 # Atomic Scattering Factors
 
-A Python package for calculating atomic X-ray scattering factors and
-energy-dependent effective electron densities of materials.
+A lightweight Python package to calculate energy-dependent X-ray **atomic forward scattering factors** and **real or complex effective electron densities** for SAXS and anomalous SAXS (ASAXS).
 
-The package provides utilities for:
-
-- calculating atomic scattering factors `f1` and `f2`
-- calculating an energy-dependent effective atomic number
-- parsing chemical formulas with fractional stoichiometries
-- calculating molecular masses
-- calculating the total atomic number of a chemical formula
-- calculating effective electron densities
-- handling both scalar and NumPy-array X-ray energies
+All energies supplied to the API are in **eV**, and effective electron densities are returned in **electrons/m³**.
 
 ## Features
 
+- Retrieve energy-dependent atomic scattering factors, `f1(E)` and `f2(E)`, or the complex factor `f1(E) + 1j*f2(E)`.
+- Calculate coherent, composition-weighted complex scattering factors for chemical formulas.
+- Calculate real-valued legacy or complex effective electron densities, with explicit particle–solvent contrasts for ASAXS.
+- Accept scalar energies, arrays, and multidimensional NumPy arrays.
+- Parse formulas with fractional stoichiometries, repeated elements, and optional colon-separated dopant notation.
+
+## Installation
+
+Requires Python >= 3.12, NumPy >= 1.26, and `periodictable` >= 2.1.0. No NumPy-major-version upper bound is imposed by this package.
+
+```bash
+git clone https://github.com/anatoli-ulmer/atomic-scattering-factors.git
+cd atomic-scattering-factors
+python -m pip install -e .
+```
+
+To check what an installation would change **without modifying the environment**:
+
+```bash
+python -m pip install --dry-run -e .
+```
+
+If the required dependencies are already installed and compatible, `python -m pip install --no-deps -e .` installs only this project. Note that `--no-deps` does not verify compatibility.
+
+## Usage
+
 ### Atomic scattering factors
-
-For a given element and X-ray photon energy, the package returns the
-real and imaginary parts of the atomic scattering factor:
-
-$$f(E) = f_1(E) + i f_2(E)$$
-
-```python
-from atomic_scattering_factors import get_scattering_factors
-
-f1, f2 = get_scattering_factors("Si", 8000)
-````
-
-Multiple energies can be supplied as a NumPy array:
 
 ```python
 import numpy as np
+from atomic_scattering_factors import get_scattering_factors, get_complex_scattering_factor
 
-energies = np.array([5000, 6000, 7000, 8000])
-
-f1, f2 = get_scattering_factors("Si", energies)
+energies = np.linspace(8000, 14000, 300)  # eV
+f1, f2 = get_scattering_factors("Au", energies)
+f = get_complex_scattering_factor("Au", energies)
+assert np.allclose(f, f1 + 1j*f2)
 ```
 
-The returned arrays have the same shape as the input energy array.
+The complex convention is $f(E)=f_1(E)+i f_2(E)$. These dimensionless factors describe **forward scattering**, approximately $q=0$; a complete finite-$q$ atomistic form factor also requires the momentum-transfer dependence.
 
----
-
-## Effective atomic number
-
-The package defines an energy-dependent effective atomic number as
-
-$$Z_\mathrm{eff}(E) = \sqrt{f_1(E)^2 + f_2(E)^2}.$$
-
-For a single element:
+### Coherent factor for a chemical formula
 
 ```python
-from atomic_scattering_factors import get_effective_Z
+from atomic_scattering_factors import get_scattering_factor_formula
 
-Z_eff = get_effective_Z("Si", 8000)
+f_silica = get_scattering_factor_formula("SiO2", energies)
+# f_silica(E) = f_Si(E) + 2*f_O(E)
 ```
 
-or for multiple energies:
+The complex contributions are summed **before** taking a magnitude. This is different from the historical `get_effective_Z_formula()`, which sums individual magnitudes.
 
-```python
-energies = np.array([5000, 6000, 7000, 8000])
-
-Z_eff = get_effective_Z("Si", energies)
-```
-
----
-
-## Chemical formulas
-
-Chemical formulas can contain integer and fractional stoichiometries.
-
-For example:
-
-```python
-from atomic_scattering_factors import parse_formula
-
-elements, counts = parse_formula("NaY0.5Gd0.3F4")
-
-print(elements)
-# ['Na', 'Y', 'Gd', 'F']
-
-print(counts)
-# [1.0, 0.5, 0.3, 4.0]
-```
-
-Dopants can be specified after a colon:
-
-```python
-elements, counts = parse_formula(
-    "NaY0.5Gd0.3F4:Yb0.02,Er0.01"
-)
-```
-
-The parser combines repeated elements automatically.
-
-For example:
-
-```python
-parse_formula("HOH")
-```
-
-returns the equivalent stoichiometry of:
-
-```text
-H2O
-```
-
-### Supported notation
-
-Examples of supported formulas include:
-
-```text
-H2O
-SiO2
-C6H12O6
-NaY0.5Gd0.3F4
-NaY0.5Gd0.3F4:Yb0.02,Er0.01
-```
-
-Parenthesized formulas such as `Ca(OH)2` are currently not supported.
-
----
-
-## Effective atomic number of a compound
-
-The effective atomic number of a chemical formula is calculated by summing
-the energy-dependent effective atomic numbers of its constituent elements,
-weighted by their stoichiometric coefficients:
-
-$$Z_\mathrm{eff,formula}(E) = \sum_i n_i Z_{\mathrm{eff},i}(E).$$
-
-For example:
-
-```python
-from atomic_scattering_factors import get_effective_Z_formula
-
-energies = np.array([5000, 6000, 7000, 8000])
-
-Z_eff = get_effective_Z_formula(
-    "SiO2",
-    energies,
-)
-```
-
-A scalar energy returns a scalar:
-
-```python
-Z_eff = get_effective_Z_formula("SiO2", 8000)
-```
-
-An array of energies returns a NumPy array with the same shape:
-
-```python
-energies = np.array([
-    [5000, 6000],
-    [7000, 8000],
-])
-
-Z_eff = get_effective_Z_formula("SiO2", energies)
-
-print(Z_eff.shape)
-# (2, 2)
-```
-
----
-
-## Molecular weight
-
-Molecular masses are calculated using the element masses provided by
-`periodictable`.
-
-```python
-from atomic_scattering_factors import molecular_weight
-
-mass = molecular_weight("H2O")
-
-print(mass)
-# approximately 18.015 g/mol
-```
-
-Fractional stoichiometries are supported:
-
-```python
-mass = molecular_weight("NaY0.5Gd0.3F4")
-```
-
----
-
-## Total atomic number
-
-The total atomic number per formula unit can be obtained with:
-
-```python
-from atomic_scattering_factors import get_Z_formula
-
-Z = get_Z_formula("SiO2")
-
-print(Z)
-# 30
-```
-
-For `SiO2`:
-
-$$Z = 14 + 2 \times 8 = 30.$$
-
----
-
-## Effective electron density
-
-The package can calculate an energy-dependent effective electron density:
-
-$$
-\rho_e(E) =
-n,Z_\mathrm{eff}(E),
-$$
-
-where (n) is the number density of formula units.
-
-The returned quantity has units of electrons per cubic metre (`electrons/m³`).
-
-### Pure elements
-
-For a pure element, the tabulated elemental density can be used automatically:
+### Complex effective electron density
 
 ```python
 from atomic_scattering_factors import effective_electron_density
 
-rho_e = effective_electron_density(
-    "Si",
-    energies_eV=8000,
+rho_gold = effective_electron_density("Au", energies_eV=energies, complex=True)
+rho_water = effective_electron_density(
+    "H2O", mass_density_g_per_cm3=1.0, energies_eV=energies, complex=True
 )
+
+rho_real = rho_gold.real
+rho_imag = rho_gold.imag
+rho_absolute = np.abs(rho_gold)
+rho_gold_in_electrons_per_A3 = rho_gold * 1e-30
 ```
 
-### Compounds
+The package uses the tabulated elemental mass density for a pure element when no density is specified. For a chemical compound, provide its bulk mass density in **g/cm³**; the chemical formula alone does not determine this quantity.
 
-For chemical compounds, the mass density must be provided explicitly:
+### ASAXS particle–solvent contrast
 
 ```python
-rho_e = effective_electron_density(
-    "SiO2",
-    mass_density_g_per_cm3=2.2,
-    energies_eV=8000,
-)
+delta_rho = rho_gold - rho_water
+contrast_squared = np.abs(delta_rho)**2
+# For a homogeneous particle: I(q,E) is proportional to V**2 * P(q) * contrast_squared
 ```
 
-This is intentional: there is no unique material density that can be
-inferred from a chemical formula alone.
+This yields a contrast term, **not a full intensity model**: concentration, structure factor, instrumental effects, and any relevant additional physical contributions must be addressed separately.
 
-Multiple energies are supported:
+## Definitions and units
 
-```python
-energies = np.array([
-    5000,
-    6000,
-    7000,
-    8000,
-])
+For a chemical formula with $N_j$ atoms of element $j$ per formula unit:
 
-rho_e = effective_electron_density(
-    "SiO2",
-    mass_density_g_per_cm3=2.2,
-    energies_eV=energies,
-)
-```
+$$
+F(E)=\sum_j N_j\,[f_{1,j}(E)+i f_{2,j}(E)] .
+$$
 
-The returned array has the same shape as `energies`.
+The coherent effective electron density is
 
-Mass densities must be finite and strictly positive.
+$$
+\widetilde{\rho}_e(E)=n F(E),\qquad n=\frac{\rho_m N_A}{M},
+$$
 
----
+where $n$ is the number density of formula units, $\rho_m$ is mass density, $N_A$ is Avogadro's constant, and $M$ is molar mass (using consistent units). The function returns $\widetilde{\rho}_e$ in **electrons/m³**.
 
-# Installation
+For a particle in a solvent with potentially complex electron density:
 
-## Requirements
+$$
+\Delta\widetilde{\rho}_e(E)=\widetilde{\rho}_{e,\mathrm{particle}}(E)-\widetilde{\rho}_{e,\mathrm{solvent}}(E).
+$$
 
-The package requires:
+The complex X-ray scattering-length density is related by $\widetilde{\rho}_{\mathrm{SLD}}=r_e\widetilde{\rho}_e$, with $r_e$ the classical electron radius (giving SLD in m⁻²). Other libraries may use different imaginary-part sign conventions.
 
-* Python
-* NumPy
-* SciPy
-* periodictable
+### Backward compatibility
 
-The package also depends on the X-ray scattering-factor interpolation
-functionality provided by `xraylabtool`.
+The default `effective_electron_density(..., complex=False)` maintains the earlier magnitude-based definition:
 
-## Development installation
+$$
+\rho_{e,\mathrm{legacy}}(E)=n\sum_j N_j\,\left|f_j(E)\right|.
+$$
 
-Clone the repository and install it in editable mode:
+**This is not, in general, the coherent electron-density magnitude** $|\widetilde{\rho}_e(E)|$, because $\sum_j N_j |f_j|$ and $|\sum_j N_j f_j|$ are different for compounds. For SAXS and ASAXS calculations use `complex=True` and, if needed, apply `np.abs()` **after** the coherent summation. The legacy functions `get_effective_Z()` and `get_effective_Z_formula()` remain available for compatibility.
+
+## API overview
+
+| Function | Description |
+| --- | --- |
+| `get_scattering_factors(element, energies_eV)` | Return atomic `f1` and `f2` |
+| `get_complex_scattering_factor(element, energies_eV)` | Return `f1 + 1j*f2` |
+| `get_scattering_factor_formula(formula, energies_eV)` | Sum coherent complex factors over a formula |
+| `effective_electron_density(formula, mass_density_g_per_cm3=None, energies_eV=8000, *, complex=False)` | Legacy or complex effective electron density |
+| `get_effective_Z(element, energies_eV)` | Legacy atomic factor magnitude |
+| `get_effective_Z_formula(formula, energies_eV)` | Legacy sum of atomic magnitudes |
+| `parse_formula(formula)` | Return elemental symbols and stoichiometries |
+| `molecular_weight(formula)` | Return molar mass in g/mol |
+| `get_Z_formula(formula)` | Return total atomic number per formula unit |
+
+Examples of accepted formula notation: `H2O`, `HOH`, `SiO2`, `NaY0.5Gd0.3F4`, and `NaY0.5Gd0.3F4:Yb0.02,Er0.01`. Parenthesized formulas such as `Ca(OH)2` are not currently supported.
+
+## Scattering-factor data and ASAXS caveats
+
+The `periodictable` backend uses tabulated Henke/CXRO scattering factors. Photon energies passed in **eV** are converted to the **keV** expected by `periodictable`. Its `f1` interpolation is linear in energy, while its `f2` interpolation is log-log. Unavailable factors or energies outside the tabulated range result in a `ValueError`.
+
+Results can differ slightly from the older `xraylabtool` backend because of **interpolation differences** and, for some elements, differences in the underlying tables. Around absorption edges these differences deserve special attention. Atomic tabulations do not necessarily capture chemical shifts or X-ray absorption fine structure in a particular experimental sample. For quantitative near-edge ASAXS, experimentally determined absorption spectra and a Kramers–Kronig treatment of the dispersive correction may be required. This package does not currently load custom experimental factor tables.
+
+## Testing
 
 ```bash
-git clone git@itgit.bs.ptb.de:ulmer01/atomic_scattering_factors.git
-cd atomic_scattering_factors
-python -m pip install -e .
+python -m pip install -e '.[test]'
+python -m pip check
+python -m pytest -q
 ```
 
-Using an editable installation means that changes to the source code are
-immediately available without reinstalling the package.
+The test suite is under `tests/`. For a scientific comparison with the former implementation, compare the real and imaginary atomic factors separately; also distinguish changes due to the backend from the different mathematics of the legacy and coherent density definitions.
 
----
+## License
 
-# Usage
+See [LICENSE](LICENSE).
 
-After installation, functions can be imported directly from the package:
+## Data sources and acknowledgments
 
-```python
-from atomic_scattering_factors import (
-    get_scattering_factors,
-    get_effective_Z,
-    get_effective_Z_formula,
-    get_Z_formula,
-    molecular_weight,
-    effective_electron_density,
-)
-```
+Atomic X-ray scattering factors are obtained using the
+`periodictable` Python package, which uses tabulated data
+from the Center for X-Ray Optics, Lawrence Berkeley
+National Laboratory.
 
-For example:
-
-```python
-import numpy as np
-
-energies = np.linspace(5000, 12000, 100)
-
-rho_e = effective_electron_density(
-    "SiO2",
-    mass_density_g_per_cm3=2.2,
-    energies_eV=energies,
-)
-```
-
----
-
-# Testing
-
-The project uses `pytest`.
-
-Install the test dependencies if necessary:
-
-```bash
-python -m pip install pytest
-```
-
-Run the complete test suite from the project root:
-
-```bash
-python -m pytest -v
-```
-
-The tests cover:
-
-* chemical formula parsing
-* fractional stoichiometries
-* dopant notation
-* invalid formulas
-* molecular masses
-* atomic numbers
-* scalar energy input
-* NumPy array energy input
-* multidimensional energy arrays
-* scattering factors
-* effective atomic numbers
-* effective electron densities
-* density validation
-* consistency between scalar and array calculations
-
-The test suite is located in:
-
-```text
-tests/
-└── test_atomic_scattering_factors.py
-```
-
----
-
-# Project structure
-
-```text
-atomic_scattering_factors/
-├── .gitignore
-├── pyproject.toml
-├── README.md
-├── src/
-│   └── atomic_scattering_factors/
-│       ├── __init__.py
-│       └── atomic_scattering_factors.py
-└── tests/
-    └── test_atomic_scattering_factors.py
-```
-
-The source code follows the standard Python `src` layout.
-
----
-
-# API overview
-
-| Function                       | Description                                           |
-| ------------------------------ | ----------------------------------------------------- |
-| `get_scattering_factors()`     | Calculate `f1` and `f2` for an element                |
-| `get_effective_Z()`            | Calculate energy-dependent effective Z for an element |
-| `parse_formula()`              | Parse a chemical formula                              |
-| `molecular_weight()`           | Calculate molecular mass                              |
-| `get_effective_Z_formula()`    | Calculate effective Z for a chemical formula          |
-| `get_Z_formula()`              | Calculate total atomic number                         |
-| `effective_electron_density()` | Calculate energy-dependent effective electron density |
-
----
-
-# Energy input
-
-All functions accepting X-ray energies support both scalar and array-like
-input.
-
-For example:
-
-```python
-get_effective_Z("Si", 8000)
-```
-
-returns a scalar, while:
-
-```python
-get_effective_Z(
-    "Si",
-    np.array([5000, 8000, 12000]),
-)
-```
-
-returns a NumPy array.
-
-Multidimensional arrays are also supported:
-
-```python
-energies = np.array([
-    [5000, 6000],
-    [7000, 8000],
-])
-
-result = get_effective_Z("Si", energies)
-```
-
-The output has the same shape as the input.
-
-Energies must be finite and strictly positive.
-
----
-
-# License
-
-This project is licensed under the terms of the license specified in
-`LICENSE`.
+Reference:
+B. L. Henke, E. M. Gullikson, and J. C. Davis,
+Atomic Data and Nuclear Data Tables 54, 181–342 (1993).
