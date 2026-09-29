@@ -96,18 +96,18 @@ $$
 The coherent effective electron density is
 
 $$
-\widetilde{\rho}_e(E)=n F(E),\qquad n=\frac{\rho_m N_A}{M},
+\tilde{\rho}_e(E)=n F(E),\qquad n=\frac{\rho_m N_A}{M},
 $$
 
-where $n$ is the number density of formula units, $\rho_m$ is mass density, $N_A$ is Avogadro's constant, and $M$ is molar mass (using consistent units). The function returns $\widetilde{\rho}_e$ in **electrons/m³**.
+where $n$ is the number density of formula units, $\rho_m$ is mass density, $N_A$ is Avogadro's constant, and $M$ is molar mass (using consistent units). The function returns $\tilde{\rho}_e$ in **electrons/m³**.
 
 For a particle in a solvent with potentially complex electron density:
 
 $$
-\Delta\widetilde{\rho}_e(E)=\widetilde{\rho}_{e,\mathrm{particle}}(E)-\widetilde{\rho}_{e,\mathrm{solvent}}(E).
+\Delta\tilde{\rho}_e(E)=\tilde{\rho}_{e,\mathrm{particle}}(E)-\tilde{\rho}_{e,\mathrm{solvent}}(E).
 $$
 
-The complex X-ray scattering-length density is related by $\widetilde{\rho}_{\mathrm{SLD}}=r_e\widetilde{\rho}_e$, with $r_e$ the classical electron radius (giving SLD in m⁻²). Other libraries may use different imaginary-part sign conventions.
+The complex X-ray scattering-length density is related by $\tilde{\rho}_{\mathrm{SLD}}=r_e\tilde{\rho}_e$, with $r_e$ the classical electron radius (giving SLD in m⁻²). Other libraries may use different imaginary-part sign conventions.
 
 ### Backward compatibility
 
@@ -117,7 +117,7 @@ $$
 \rho_{e,\mathrm{legacy}}(E)=n\sum_j N_j\,\left|f_j(E)\right|.
 $$
 
-**This is not, in general, the coherent electron-density magnitude** $|\widetilde{\rho}_e(E)|$, because $\sum_j N_j |f_j|$ and $|\sum_j N_j f_j|$ are different for compounds. For SAXS and ASAXS calculations use `complex=True` and, if needed, apply `np.abs()` **after** the coherent summation. The legacy functions `get_effective_Z()` and `get_effective_Z_formula()` remain available for compatibility.
+**This is not, in general, the coherent electron-density magnitude** $|\tilde{\rho}_e(E)|$, because $\sum_j N_j |f_j|$ and $|\sum_j N_j f_j|$ are different for compounds. For SAXS and ASAXS calculations use `complex=True` and, if needed, apply `np.abs()` **after** the coherent summation. The legacy functions `get_effective_Z()` and `get_effective_Z_formula()` remain available for compatibility.
 
 ## API overview
 
