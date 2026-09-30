@@ -6,6 +6,7 @@ The complex convention is f = f1 + 1j*f2, consistent with periodictable.
 
 import re
 from collections import OrderedDict
+from functools import lru_cache
 
 import numpy as np
 import periodictable as pt
@@ -36,35 +37,64 @@ def _restore_complex(value, input_was_scalar):
     return np.asarray(value, dtype=complex)
 
 
-def get_scattering_factors(element, energies_eV):
-    """Return real f1 and imaginary f2 atomic forward scattering factors.
+@lru_cache(maxsize=128)
+def _get_pchip_interpolators(element):
+    """Build cached shape-preserving cubic interpolators from Henke tables.
+
+    SciPy is imported lazily so default calculations have no SciPy dependency.
+    Source values and tabulated energy grid are unchanged.
+    """
+    try:
+        from scipy.interpolate import PchipInterpolator
+    except ImportError as exc:
+        raise ImportError(
+            "PCHIP interpolation requires the optional SciPy dependency. "
+            "Install it with 'pip install atomic-scattering-factors[spline]' "
+            "or use interpolation='default'."
+        ) from exc
+
+    table = pt.elements.symbol(element).xray.sftable
+    if table is None:
+        raise ValueError(f"No X-ray scattering factors available for {element!r}.")
+
+    # periodictable's sftable energies are in keV. In its table loader,
+    # missing f1 entries (originally -9999) are converted into NaNs.
+    table = np.asarray(table, dtype=float)
+    x = table[0] * 1000.0  # eV
+    interpolators = []
+    for y in (table[1], table[2]):
+        valid = np.isfinite(x) & np.isfinite(y)
+        if valid.sum() < 2:
+            raise ValueError(f"Insufficient scattering-factor data for {element!r}.")
+        # Keep individual valid ranges for f1 and f2; never extrapolate.
+        interpolators.append(PchipInterpolator(x[valid], y[valid], extrapolate=False))
+    return tuple(interpolators)
+
+
+def get_scattering_factors(element, energies_eV, *, interpolation="default"):
+    """Return atomic forward factors f1 and f2 at photon energies in eV.
 
     Parameters
     ----------
     element : str
-        Atomic symbol, for example ``'Si'`` or ``'Au'``.
+        Atomic symbol, e.g. ``'Au'``.
     energies_eV : float or array-like
-        Photon energies in eV (not keV). Scalars, vectors and N-D arrays
-        are accepted.
-
-    Returns
-    -------
-    f1, f2 : float or ndarray
-        Forward factors in electron units, interpolated from periodictable's
-        Henke tables. Shape follows ``energies_eV``.
-
-    Raises
-    ------
-    ValueError
-        If an energy is invalid, outside the tabulated range, or lacks
-        tabulated scattering factors.
+        Photon energies in eV; scalar or arrays of arbitrary shape.
+    interpolation : {"default", "pchip", "spline"}, optional
+        ``"default"`` preserves periodictable's native linear f1 and
+        log-log f2 interpolation. ``"pchip"`` or ``"spline"`` uses
+        SciPy's shape-preserving piecewise cubic Hermite interpolation for
+        both f1 and f2 on the *same* periodictable source tables. SciPy is
+        optional and loaded only for the spline modes.
 
     Notes
     -----
-    The tabulation is for forward scattering (q approximately zero). The
-    f1/f2 convention is f = f1 + 1j*f2. Interpolation and near-edge values
-    may differ slightly from the former xraylabtool implementation.
+    All interpolation is within the available atomic tables, without
+    extrapolation. Piecewise cubic interpolation may differ near absorption
+    edges but does not add experimentally measured near-edge structure.
     """
+    if interpolation not in ("default", "pchip", "spline"):
+        raise ValueError("interpolation must be 'default', 'pchip', or 'spline'.")
     input_was_scalar = np.ndim(energies_eV) == 0
     energies = _prepare_energies(energies_eV)
     try:
@@ -72,33 +102,36 @@ def get_scattering_factors(element, energies_eV):
     except Exception as exc:
         raise ValueError(f"Unknown element symbol: {element!r}") from exc
 
-    # periodictable accepts energies in keV and np.interp expects 1-D inputs.
-    # Flatten to preserve support for multidimensional energy arrays.
-    f1, f2 = atom.xray.scattering_factors(energy=energies.reshape(-1) / 1000.0)
-    if f1 is None or f2 is None:
-        raise ValueError(f"No X-ray scattering factors available for {element!r}.")
+    if interpolation == "default":
+        # periodictable wants energies in keV and expects a flat vector.
+        f1, f2 = atom.xray.scattering_factors(energy=energies.reshape(-1) / 1000.0)
+        if f1 is None or f2 is None:
+            raise ValueError(f"No X-ray scattering factors available for {element!r}.")
+    else:
+        f1_interp, f2_interp = _get_pchip_interpolators(atom.symbol)
+        f1, f2 = f1_interp(energies.reshape(-1)), f2_interp(energies.reshape(-1))
+
     f1 = np.asarray(f1, dtype=float).reshape(energies.shape)
     f2 = np.asarray(f2, dtype=float).reshape(energies.shape)
     if not (np.all(np.isfinite(f1)) and np.all(np.isfinite(f2))):
         raise ValueError(
             f"Scattering factors for {element!r} are unavailable at one or "
-            "more supplied energies; check the tabulated range (typically "
-            "approximately 30–30000 eV)."
+            "more supplied energies; check the tabulated energy range."
         )
     return _restore_scalar(f1, input_was_scalar), _restore_scalar(f2, input_was_scalar)
 
 
-def get_complex_scattering_factor(element, energies_eV):
-    """Return the complex atomic forward factor f1(E) + 1j*f2(E)."""
+def get_complex_scattering_factor(element, energies_eV, *, interpolation="default"):
+    """Return complex atomic forward factor f1 + 1j*f2."""
     input_was_scalar = np.ndim(energies_eV) == 0
-    f1, f2 = get_scattering_factors(element, energies_eV)
+    f1, f2 = get_scattering_factors(element, energies_eV, interpolation=interpolation)
     return _restore_complex(np.asarray(f1) + 1j * np.asarray(f2), input_was_scalar)
 
 
-def get_effective_Z(element, energies_eV):
+def get_effective_Z(element, energies_eV, *, interpolation="default"):
     """Legacy effective atomic number: ``abs(f1 + 1j*f2)``."""
     input_was_scalar = np.ndim(energies_eV) == 0
-    f1, f2 = get_scattering_factors(element, energies_eV)
+    f1, f2 = get_scattering_factors(element, energies_eV, interpolation=interpolation)
     return _restore_scalar(np.hypot(f1, f2), input_was_scalar)
 
 
@@ -146,7 +179,7 @@ def molecular_weight(formula):
     return sum(pt.elements.symbol(el).mass * n for el, n in zip(elements, counts))
 
 
-def get_effective_Z_formula(chemical_formula, energies_eV):
+def get_effective_Z_formula(chemical_formula, energies_eV, *, interpolation="default"):
     """Legacy formula descriptor ``sum(N_i * abs(f_i))``.
 
     CAUTION: this is *not* a coherent molecular scattering amplitude and
@@ -158,11 +191,11 @@ def get_effective_Z_formula(chemical_formula, energies_eV):
     elements, counts = parse_formula(chemical_formula)
     result = np.zeros_like(energies, dtype=float)
     for element, count in zip(elements, counts):
-        result += count * get_effective_Z(element, energies)
+        result += count * get_effective_Z(element, energies, interpolation=interpolation)
     return _restore_scalar(result, input_was_scalar)
 
 
-def get_scattering_factor_formula(chemical_formula, energies_eV):
+def get_scattering_factor_formula(chemical_formula, energies_eV, *, interpolation="default"):
     """Return the *coherent complex* forward factor of a formula unit.
 
     F(E) = sum_i N_i [f1_i(E) + 1j*f2_i(E)].
@@ -173,7 +206,7 @@ def get_scattering_factor_formula(chemical_formula, energies_eV):
     elements, counts = parse_formula(chemical_formula)
     result = np.zeros_like(energies, dtype=complex)
     for element, count in zip(elements, counts):
-        result += count * get_complex_scattering_factor(element, energies)
+        result += count * get_complex_scattering_factor(element, energies, interpolation=interpolation)
     return _restore_complex(result, input_was_scalar)
 
 
@@ -189,6 +222,7 @@ def effective_electron_density(
     energies_eV=8000,
     *,
     complex=False,
+    interpolation="default",
 ):
     """Return an effective electron density in electrons/m³.
 
@@ -219,6 +253,10 @@ def effective_electron_density(
         Select coherent complex electron density. Defaults to False for
         backward compatibility with the v0.2 API.
 
+    interpolation : {"default", "pchip", "spline"}, optional
+        Interpolation for each atomic factor. SciPy is needed only for
+        spline/PCHIP; default behavior is unchanged.
+
     Returns
     -------
     float, complex, or ndarray
@@ -238,5 +276,9 @@ def effective_electron_density(
     # [g/cm³] -> [g/m³]; divided by [g/mol], multiplied by [1/mol].
     number_density = (mass_density_g_per_cm3 * 1e6 / molecular_weight(sample_str)) * avogadro_number
     if complex:
-        return number_density * get_scattering_factor_formula(sample_str, energies_eV)
-    return number_density * get_effective_Z_formula(sample_str, energies_eV)
+        return number_density * get_scattering_factor_formula(
+            sample_str, energies_eV, interpolation=interpolation
+        )
+    return number_density * get_effective_Z_formula(
+        sample_str, energies_eV, interpolation=interpolation
+    )

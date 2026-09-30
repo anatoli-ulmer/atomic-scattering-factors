@@ -151,6 +151,57 @@ python -m pytest -q
 
 The test suite is under `tests/`. For a scientific comparison with the former implementation, compare the real and imaginary atomic factors separately; also distinguish changes due to the backend from the different mathematics of the legacy and coherent density definitions.
 
+## Optional PCHIP (spline) interpolation
+
+By default, `get_scattering_factors()` retains the exact `periodictable` behavior:
+linear interpolation in energy for `f1`, and log-log interpolation for `f2`.
+To use the shape-preserving piecewise cubic Hermite interpolator (PCHIP) for
+**both** factors, specify `interpolation="pchip"`. The alias `"spline"` has
+the same behavior.
+
+```python
+import numpy as np
+from atomic_scattering_factors import (
+    get_scattering_factors,
+    effective_electron_density,
+)
+
+energies = np.linspace(11500, 12200, 300)  # eV, near the Au L3 edge
+f1_default, f2_default = get_scattering_factors("Au", energies)
+f1_spline, f2_spline = get_scattering_factors("Au", energies, interpolation="pchip")
+
+rho_au = effective_electron_density(
+    "Au", energies_eV=energies, complex=True, interpolation="pchip"
+)
+```
+
+Spline interpolation is also available in `get_complex_scattering_factor`,
+`get_effective_Z`, `get_effective_Z_formula`, and
+`get_scattering_factor_formula`. It is propagated throughout material-density
+calculations. If omitted, `interpolation="default"` preserves existing results.
+
+**Dependencies:** SciPy is **not** a mandatory dependency. Only PCHIP mode imports
+it. To install it optionally:
+
+```bash
+python -m pip install --dry-run -e '.[spline]'   # preview package changes first
+python -m pip install -e '.[spline]'             # optional installation
+```
+
+If SciPy is already available in your environment, no separate installation is
+needed to enable PCHIP interpolation. Using `--no-deps` avoids changes to other
+installed dependencies, but it does **not** verify their compatibility.
+
+**Scientific note:** PCHIP is a shape-preserving cubic interpolator, not a
+physical near-edge model. It interpolates the **same Henke/CXRO table data**
+shipped with `periodictable`, so differences from the former `xraylabtool`
+data source cannot be removed by changing interpolation alone. Values outside
+valid tabulated energy intervals are never extrapolated. At absorption edges,
+even shape-preserving interpolation should not be confused with a measured
+resonant line shape or chemical-state-sensitive XAFS spectrum.
+
+See `examples/interpolation_comparison.ipynb` for a comparison of both modes.
+
 ## License
 
 See [LICENSE](LICENSE).

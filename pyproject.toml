@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atomic-scattering-factors"
-version = "0.3.0"
+version = "0.3.1"
 description = "Calculate X-ray atomic scattering factors and real or complex effective electron densities."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -17,6 +17,7 @@ license-files = ["LICENSE"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+spline = ["scipy>=1.13"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
